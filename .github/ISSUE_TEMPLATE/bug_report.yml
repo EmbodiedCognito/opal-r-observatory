@@ -1,0 +1,20 @@
+name: Bug report
+description: Report reproducible incorrect or unexpected behaviour
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Include the expected behaviour and a minimal reproduction.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Data and privacy
+      description: Use synthetic data. Do not attach confidential research data or credentials.
+  - type: input
+    attributes:
+      label: Opal version and browser
+    validations:
+      required: true

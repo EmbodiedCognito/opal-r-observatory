@@ -1,0 +1,20 @@
+name: Feature request
+description: Propose an analysis, workflow, or platform improvement
+title: "[Proposal]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Research problem
+      description: What question or workflow should this help with?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Trust and data implications
+      description: Does this introduce agent actions, code execution, new packages, or external data flows?

@@ -4,7 +4,6 @@ import {
   Activity,
   BarChart3,
   BookOpen,
-  Braces,
   Check,
   ChevronRight,
   CircleDot,

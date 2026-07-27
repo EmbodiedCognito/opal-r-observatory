@@ -23,7 +23,12 @@ Opal is built around three commitments:
 - Infer initial measurement types and flag them for verification
 - Recommend compatible descriptive and inferential methods
 - Generate reproducible R plans for descriptive analysis, correlation, t-tests, ANOVA, and linear regression
-- Require explicit approval before recording an analysis plan
+- Require explicit approval before running an analysis
+- Execute approved base-R analyses locally in the browser through webR
+- Display captured R output alongside the exact code and runtime version
+- Build reproducible synthetic datasets from a custom variable schema
+- Use optional study presets as editable starting points
+- Override inferred measurement types and map variables through direct controls
 - Inspect data, proposals, results, and R code in dedicated workspaces
 - Run a deterministic example project without external services
 
@@ -62,15 +67,26 @@ npm run check
 
 ## Project status
 
-Version `0.1.0` is a front-end foundation and interaction specification. It does not yet provide:
+Version `0.2.0-dev` is a local analysis foundation. It does not yet provide:
 
-- real R execution
 - language-model integration
 - persistent projects
-- validated statistical reporting
+- publication-ready statistical reporting or independent validation
 - plugin installation
 
 Those omissions are deliberate and visible in the UI.
+
+## Local R runtime
+
+Opal loads [webR 0.6.0](https://github.com/r-wasm/webr/releases/tag/v0.6.0) from the official webR CDN only after a user approves an analysis. R runs in a browser worker through WebAssembly; imported rows are materialised inside that local session and are not uploaded to Opal.
+
+The webR runtime and R are separately licensed GPL software. Opal does not vendor their binaries in this repository. See the [webR project](https://github.com/r-wasm/webr) for source and licence details.
+
+The first runtime download is substantial and requires an internet connection. A self-hosted, integrity-pinned runtime is planned before a stable release.
+
+## Dual interface
+
+Opal's visual controls are the source of truth. Aster may explain or populate those controls, but every analysis must remain fully configurable without an agent. Agent proposals and direct manipulation produce the same inspectable R plan.
 
 ## Contributing
 

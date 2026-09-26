@@ -4,6 +4,8 @@
 
 Opal treats AI as a proposal author, not an invisible operator. Statistical reasoning, execution, and presentation are distinct concerns.
 
+The visual configuration is canonical. Agent dialogue must compile into the same analysis specification used by direct controls; it may not maintain hidden analytical state.
+
 ## Trust zones
 
 ### Browser workbench
@@ -16,7 +18,7 @@ Planned. Receives the minimum required schema and user question by default—not
 
 ### R runtime adapter
 
-Planned. Accepts a validated analysis specification and materialises it as R code inside a disposable session. A production adapter must provide:
+The current adapter loads webR on demand and executes only code generated from Opal's versioned catalogue after explicit approval. Dataset values are serialised as R literals inside the local browser worker. A production adapter must additionally provide:
 
 - filesystem and network isolation
 - CPU, memory, and wall-clock limits
@@ -36,9 +38,11 @@ Rejection and editing are first-class outcomes. Approval is scoped to one immuta
 ## Near-term package boundaries
 
 - `domain/`: analysis catalogue, schema inference, proposal validation
-- `runtime/`: WebR or server adapter interfaces
+- `runtime/`: webR execution, safe dataset serialisation, and future server adapters
 - `agent/`: model-provider-neutral proposal client
 - `project/`: portable project bundle and provenance
 - `ui/`: visual workbench
+
+The portable project/result format is also the intended integration boundary for future clients such as an Obsidian plugin. Editor-specific integration should not own analysis state.
 
 The prototype keeps UI code compact while the boundaries stabilise. Extraction into packages should follow working interfaces, not precede them.

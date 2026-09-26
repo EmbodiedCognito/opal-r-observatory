@@ -1,5 +1,5 @@
 import { analyses } from "./catalog";
-import type { AnalysisDefinition, Dataset, Variable } from "../types";
+import type { AnalysisDefinition, AnalysisMapping, Dataset, Variable } from "../types";
 
 export function inferVariable(name: string, values: unknown[]): Variable {
   const present = values.filter((value) => value !== "" && value != null);
@@ -39,27 +39,28 @@ export function recommendAnalyses(dataset: Dataset): AnalysisDefinition[] {
   });
 }
 
-export function proposalFor(analysis: AnalysisDefinition, dataset: Dataset) {
+export function proposalFor(analysis: AnalysisDefinition, dataset: Dataset, mapping: AnalysisMapping = {}) {
   const continuous = dataset.variables.filter((item) => item.kind === "continuous");
   const categorical = dataset.variables.filter(
     (item) => item.kind === "nominal" || item.kind === "ordinal",
   );
-  const outcome = continuous[0]?.name ?? "outcome";
-  const predictor = continuous[1]?.name ?? categorical[0]?.name ?? "predictor";
-  const formula = `${outcome} ~ ${predictor}`;
+  const outcome = mapping.outcome ?? continuous[0]?.name ?? "outcome";
+  const predictor = mapping.predictor ?? continuous[1]?.name ?? categorical[0]?.name ?? "predictor";
+  const group = mapping.group ?? categorical[0]?.name ?? predictor;
+  const column = (name: string) => `opal_data[[${JSON.stringify(name)}]]`;
 
   const code: Record<string, string> = {
     describe: `summary(opal_data)\ncolSums(is.na(opal_data))`,
-    correlation: `cor.test(opal_data$${outcome}, opal_data$${predictor})`,
-    "t-test": `t.test(${formula}, data = opal_data)`,
-    anova: `summary(aov(${formula}, data = opal_data))`,
-    regression: `model <- lm(${formula}, data = opal_data)\nsummary(model)\nplot(model)`,
+    correlation: `cor.test(${column(outcome)}, ${column(predictor)})`,
+    "t-test": `t.test(${column(outcome)} ~ as.factor(${column(group)}))`,
+    anova: `summary(aov(${column(outcome)} ~ as.factor(${column(group)})))`,
+    regression: `model <- lm(${column(outcome)} ~ ${column(predictor)})\nsummary(model)`,
   };
 
   return {
     id: `${analysis.id}-${Date.now()}`,
     title: `Run ${analysis.name}`,
-    rationale: `${analysis.description} Opal selected variables by inferred measurement type; inspect and edit the generated R before execution.`,
+    rationale: `${analysis.description} Opal selected variables by inferred measurement type; review the mapping and generated R before execution. Change the controls to revise the plan.`,
     analysisId: analysis.id,
     status: "pending" as const,
     rCode: code[analysis.id],

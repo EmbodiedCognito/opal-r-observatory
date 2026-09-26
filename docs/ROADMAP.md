@@ -24,10 +24,13 @@
 
 ## 0.2a — Local model observatory slice
 
-- [x] Save one publisher's GGUF metadata for offline catalogue search
+- [x] Save a bounded, format-neutral snapshot from one publisher for offline catalogue search
+- [x] Scope model keys by source and derive download availability from runner capabilities
 - [x] Connect to locally installed LM Studio models for an explicit download and run path
 - [x] Save and search local model prompts and responses
-- More publisher adapters, pagination, and model format coverage
+- More source adapters, pagination, incremental refresh, and richer source metadata
+- Additional local execution surfaces for non-GGUF and non-language experiments
+- General experiment records with typed inputs, outputs, and provenance, linked to analyses and datasets
 - Portable project format linking model runs and R analyses to the source data
 - [x] Offline packaged webR assets for first-time R execution after dependency installation
 

@@ -3,15 +3,19 @@ import { Database, Download, Play, RefreshCw, Search } from "lucide-react";
 import "./model-observatory.css";
 
 interface CatalogueModel {
+  key: string;
   id: string;
-  url: string;
-  revision: string | null;
-  updatedAt: string | null;
-  task: string | null;
-  downloads: number | null;
-  gated: boolean;
-  gguf: boolean;
-  tags: string[];
+  source: string;
+  title?: string;
+  url?: string;
+  revision?: string | null;
+  updatedAt?: string | null;
+  kind?: string | null;
+  task?: string | null;
+  downloads?: number | null;
+  formats?: string[];
+  tags?: string[];
+  downloadWith: string[];
 }
 
 interface LocalModel {
@@ -44,6 +48,8 @@ async function api<T>(path: string, input?: object): Promise<T> {
 export default function ModelObservatory() {
   const [search, setSearch] = useState("");
   const [publisherQuery, setPublisherQuery] = useState("");
+  const [source, setSource] = useState("huggingface");
+  const [sources, setSources] = useState<{ id: string; label: string }[]>([{ id: "huggingface", label: "Hugging Face" }]);
   const [models, setModels] = useState<CatalogueModel[]>([]);
   const [total, setTotal] = useState(0);
   const [matched, setMatched] = useState(0);
@@ -98,6 +104,13 @@ export default function ModelObservatory() {
 
   useEffect(() => {
     let active = true;
+    void api<{ sources: { id: string; label: string }[] }>("catalogue/sources").then((result) => {
+      if (active) setSources(result.sources);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
     void api<{ models: CatalogueModel[]; total: number; matched: number; lastRefresh: typeof lastRefresh }>(
       `catalogue?q=${encodeURIComponent(search)}`,
     ).then((result) => {
@@ -134,8 +147,8 @@ export default function ModelObservatory() {
     setBusy("refresh");
     setMessage("");
     try {
-      const result = await api<{ returned: number; total: number }>("catalogue/refresh", { query: publisherQuery });
-      setMessage(`Saved ${result.returned} publisher records. ${result.total} models are now available for offline search.`);
+      const result = await api<{ returned: number; total: number }>("catalogue/refresh", { source, query: publisherQuery });
+      setMessage(`Saved ${result.returned} source records. ${result.total} models are now available for offline search.`);
       await listCatalogue();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Refresh failed. Saved records remain available.");
@@ -149,7 +162,7 @@ export default function ModelObservatory() {
     setBusy("download");
     try {
       const result = await api<{ job_id?: string; status: string }>("local/download", {
-        id: selected.id, ...(quantization.trim() ? { quantization: quantization.trim() } : {}),
+        key: selected.key, runner: "lmstudio", ...(quantization.trim() ? { quantization: quantization.trim() } : {}),
       });
       setDownloadJob(result.job_id ?? "");
       setDownloadStatus(result.status);
@@ -177,7 +190,7 @@ export default function ModelObservatory() {
     if (!localKey || !prompt.trim()) return;
     setBusy("run");
     try {
-      const result = await api<{ run: LocalRun }>("local/chat", { model: localKey, prompt });
+      const result = await api<{ run: LocalRun }>("local/chat", { runner: "lmstudio", model: localKey, prompt });
       setMessage(`Local run saved with ${result.run.model}.`);
       await listRuns();
     } catch (error) {
@@ -190,21 +203,22 @@ export default function ModelObservatory() {
   return (
     <div className="model-observatory">
       <div className="section-heading"><div><span className="eyebrow">LOCAL MODEL OBSERVATORY</span><h2>Find online. Search and run locally.</h2></div></div>
-      <p className="model-intro">Refresh published GGUF model metadata when connected. The saved catalogue and run history remain searchable offline. Downloads happen only when you select one.</p>
+      <p className="model-intro">Refresh published model metadata when connected. The saved catalogue and run history remain searchable offline. LM Studio currently downloads compatible public GGUF entries when you request it.</p>
       {message && <p className="model-message" role="status">{message}</p>}
 
       <div className="model-columns">
         <section className="model-panel">
           <h3><Database size={16} /> Published models</h3>
           <div className="model-controls">
+            <select aria-label="Catalogue source" value={source} onChange={(event) => setSource(event.target.value)}>{sources.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
             <input aria-label="Publisher query" placeholder="Publisher query (optional)" value={publisherQuery} onChange={(event) => setPublisherQuery(event.target.value)} />
             <button onClick={() => void refresh()} disabled={busy !== ""}><RefreshCw size={14} /> {busy === "refresh" ? "Refreshing…" : "Refresh online"}</button>
           </div>
           <label className="model-search"><Search size={14} /><input aria-label="Search saved models" placeholder="Search saved models offline" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <p className="model-meta">{matched} matches · {total} saved{lastRefresh ? ` · refreshed ${new Date(lastRefresh.at).toLocaleString()}` : " · no refresh yet"}</p>
           <div className="model-list">
-            {models.map((model) => <button key={model.id} className={selected?.id === model.id ? "selected" : ""} onClick={() => { setSelected(model); setDownloadJob(""); setDownloadStatus(""); }}>
-              <strong>{model.id}</strong><span>{model.task ?? "Task unspecified"} · {model.downloads?.toLocaleString() ?? "?"} downloads</span>
+            {models.map((model) => <button key={model.key} className={selected?.key === model.key ? "selected" : ""} onClick={() => { setSelected(model); setDownloadJob(""); setDownloadStatus(""); }}>
+              <strong>{model.title ?? model.id}</strong><span>{model.source} · {model.kind ?? model.task ?? "Kind unspecified"}{model.downloads != null ? ` · ${model.downloads.toLocaleString()} downloads` : ""}</span>
             </button>)}
             {!models.length && <p>No saved models match this search. Refresh while online to build the catalogue.</p>}
           </div>
@@ -214,13 +228,14 @@ export default function ModelObservatory() {
         <section className="model-panel">
           <h3><Download size={16} /> Selected model</h3>
           {selected ? <>
-            <strong className="model-title">{selected.id}</strong>
+            <strong className="model-title">{selected.title ?? selected.id}</strong>
             <p className="model-meta">Published: {selected.updatedAt ? new Date(selected.updatedAt).toLocaleString() : "unknown"}<br />Revision: {selected.revision ?? "unavailable"}</p>
-            <p className="model-tags">{selected.tags.slice(0, 8).map((tag) => <span key={tag}>{tag}</span>)}</p>
-            <a href={selected.url} target="_blank" rel="noreferrer">Open publisher page</a>
+            <p className="model-meta">Source: {selected.source} · Formats advertised: {selected.formats?.join(", ") || "unspecified"}</p>
+            <p className="model-tags">{(selected.tags ?? []).slice(0, 8).map((tag) => <span key={tag}>{tag}</span>)}</p>
+            {selected.url && <a href={selected.url} target="_blank" rel="noreferrer">Open source page</a>}
             <label className="model-label">Quantization (optional)<input value={quantization} onChange={(event) => setQuantization(event.target.value)} placeholder="e.g. Q4_K_M" /></label>
-            <button onClick={() => void download()} disabled={!selected.gguf || selected.gated || busy !== ""}><Download size={14} /> {busy === "download" ? "Starting…" : "Download in LM Studio"}</button>
-            {(selected.gated || !selected.gguf) && <p className="model-meta">Automated download requires a public GGUF repository.</p>}
+            <button onClick={() => void download()} disabled={!selected.downloadWith.includes("lmstudio") || busy !== ""}><Download size={14} /> {busy === "download" ? "Starting…" : "Download in LM Studio"}</button>
+            {!selected.downloadWith.includes("lmstudio") && <p className="model-meta">This record remains searchable; the LM Studio download adapter does not support it. Other local execution paths can be added independently.</p>}
             {downloadJob && <button className="secondary" onClick={() => void checkDownload()}>Check download: {downloadStatus}</button>}
           </> : <p>Select a saved model to inspect its source and request a download.</p>}
         </section>

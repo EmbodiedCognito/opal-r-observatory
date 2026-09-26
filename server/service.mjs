@@ -2,20 +2,16 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
-import { loadState, mergeModels, normaliseHfModels, saveState, searchModels, searchRuns } from "./catalogue.mjs";
+import { loadState, mergeModels, modelKey, saveState, searchModels, searchRuns } from "./catalogue.mjs";
+import { createHuggingFaceSource } from "./sources/huggingface.mjs";
+import { createLmStudioRunner } from "./runners/lm-studio.mjs";
+import { fail } from "./upstream.mjs";
 
-const publisher = "https://huggingface.co/api/models";
 const contentTypes = {
   ".css": "text/css", ".html": "text/html", ".ico": "image/x-icon",
   ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml",
   ".wasm": "application/wasm", ".woff": "font/woff", ".woff2": "font/woff2",
 };
-
-function fail(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  throw error;
-}
 
 function send(response, status, value) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -39,38 +35,24 @@ async function bodyOf(request) {
   }
 }
 
-async function upstreamJson(fetcher, url, options = {}, source = "Publisher") {
-  let response;
-  try {
-    const { timeoutMs = 30_000, ...requestOptions } = options;
-    response = await fetcher(url, { ...requestOptions, signal: AbortSignal.timeout(timeoutMs) });
-  } catch {
-    fail(502, `${source} unavailable. Saved local records are unaffected.`);
-  }
-  if (!response.ok) fail(502, `${source} returned HTTP ${response.status}. Saved local records were kept.`);
-  try {
-    return await response.json();
-  } catch {
-    fail(502, `${source} returned invalid JSON. Saved local records were kept.`);
-  }
-}
-
 function validatedText(value, maximum, label) {
   if (typeof value !== "string" || value.length > maximum) fail(400, `Invalid ${label}.`);
   return value.trim();
 }
 
-export function createOpalServer({ dataDir, staticDir, fetcher = fetch, lmStudioUrl = "http://127.0.0.1:1234", lmToken = "" }) {
-  const lmBase = new URL(lmStudioUrl);
-  if (lmBase.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(lmBase.hostname)) {
-    throw new Error("The LM Studio endpoint must be on this computer.");
-  }
-  const lm = (path) => new URL(path, lmBase).toString();
-  const lmHeaders = lmToken ? { Authorization: `Bearer ${lmToken}` } : {};
-  const lmJson = (path, options = {}) => upstreamJson(fetcher, lm(path), {
-    ...options,
-    headers: { ...lmHeaders, ...options.headers },
-  }, "LM Studio");
+export function createOpalServer({ dataDir, staticDir, fetcher = fetch, lmStudioUrl = "http://127.0.0.1:1234", lmToken = "", sources, runners }) {
+  const sourceAdapters = sources ?? [createHuggingFaceSource({ fetcher })];
+  const runnerAdapters = runners ?? [createLmStudioRunner({ fetcher, url: lmStudioUrl, token: lmToken })];
+  const byId = (adapters) => {
+    const ids = adapters.map((adapter) => adapter.id);
+    if (ids.some((id) => typeof id !== "string" || !/^[a-z][a-z0-9-]*$/.test(id)) || new Set(ids).size !== ids.length) {
+      throw new Error("Adapter IDs must be unique lowercase names.");
+    }
+    return new Map(adapters.map((adapter) => [adapter.id, adapter]));
+  };
+  const sourceById = byId(sourceAdapters);
+  const runnerById = byId(runnerAdapters);
+  const runnerFor = (id) => runnerById.get(id) ?? fail(400, "Unknown local runner.");
 
   return createServer(async (request, response) => {
     try {
@@ -84,68 +66,61 @@ export function createOpalServer({ dataDir, staticDir, fetcher = fetch, lmStudio
       if (request.method === "GET" && url.pathname === "/api/catalogue") {
         const state = loadState(dataDir);
         const matches = searchModels(state.models, validatedText(url.searchParams.get("q") ?? "", 200, "search"));
-        return send(response, 200, { models: matches.slice(0, 200), matched: matches.length, total: state.models.length, lastRefresh: state.lastRefresh });
+        const models = matches.slice(0, 200).map((model) => ({
+          ...model, downloadWith: runnerAdapters.filter((runner) => runner.canDownload(model)).map((runner) => runner.id),
+        }));
+        return send(response, 200, { models, matched: matches.length, total: state.models.length, lastRefresh: state.lastRefresh });
+      }
+      if (request.method === "GET" && url.pathname === "/api/catalogue/sources") {
+        return send(response, 200, { sources: sourceAdapters.map(({ id, label }) => ({ id, label })) });
       }
       if (request.method === "POST" && url.pathname === "/api/catalogue/refresh") {
         const input = await bodyOf(request);
         const query = validatedText(input.query ?? "", 100, "publisher query");
-        const source = new URL(publisher);
-        source.search = new URLSearchParams({ filter: "gguf", sort: "lastModified", direction: "-1", limit: "100", ...(query ? { search: query } : {}) }).toString();
-        const remote = await upstreamJson(fetcher, source.toString());
+        const sourceId = validatedText(input.source ?? "huggingface", 40, "source");
+        const source = sourceById.get(sourceId);
+        if (!source) fail(400, "Unknown catalogue source.");
         const at = new Date().toISOString();
-        const records = normaliseHfModels(remote, at);
-        if (remote.length && !records.length) fail(502, "Publisher returned no recognisable model records.");
+        const records = await source.refresh(query);
+        if (!Array.isArray(records) || records.some((record) => !record ||
+          record.source !== source.id || typeof record.id !== "string" || !record.id.trim() ||
+          (record.key != null && record.key !== modelKey(record)))) {
+          fail(502, "Catalogue source returned invalid records. Saved local records were kept.");
+        }
         const state = loadState(dataDir);
-        state.models = mergeModels(state.models, records);
-        state.lastRefresh = { source: "huggingface", query, at, returned: records.length };
+        state.models = mergeModels(state.models, records.map((record) => ({ ...record, key: modelKey(record), seenAt: record.seenAt ?? at })));
+        state.lastRefresh = { source: source.id, query, at, returned: records.length };
         saveState(dataDir, state);
         return send(response, 200, { ...state.lastRefresh, total: state.models.length });
       }
       if (request.method === "GET" && url.pathname === "/api/local/models") {
-        const result = await lmJson("/api/v1/models");
-        if (!Array.isArray(result.models)) fail(502, "LM Studio returned an unexpected model list.");
-        return send(response, 200, { models: result.models.map((model) => ({
-          key: model.key, name: model.display_name ?? model.key, type: model.type,
-          format: model.format, sizeBytes: model.size_bytes,
-          loaded: Array.isArray(model.loaded_instances) && model.loaded_instances.length > 0,
-        })).filter((model) => typeof model.key === "string") });
+        const runner = runnerFor(validatedText(url.searchParams.get("runner") ?? "lmstudio", 40, "runner"));
+        return send(response, 200, { models: await runner.listModels() });
       }
       if (request.method === "POST" && url.pathname === "/api/local/download") {
         const input = await bodyOf(request);
-        const id = validatedText(input.id, 200, "catalogue model ID");
-        const model = loadState(dataDir).models.find((item) => item.id === id);
-        if (!model || !model.gguf || model.gated) fail(400, "Choose a saved, public GGUF model.");
+        const key = validatedText(input.key, 240, "catalogue model key");
+        const runner = runnerFor(validatedText(input.runner ?? "lmstudio", 40, "runner"));
+        const model = loadState(dataDir).models.find((item) => item.key === key);
+        if (!model || !runner.canDownload(model)) fail(400, "This runner cannot download the selected catalogue record.");
         const quantization = input.quantization == null ? "" : validatedText(input.quantization, 40, "quantization");
         if (quantization && !/^[A-Za-z0-9_.-]+$/.test(quantization)) fail(400, "Invalid quantization.");
-        const result = await lmJson("/api/v1/models/download", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model: model.url, ...(quantization ? { quantization } : {}) }),
-        });
-        return send(response, 200, result);
+        return send(response, 200, await runner.download(model, quantization));
       }
       if (request.method === "GET" && url.pathname === "/api/local/download/status") {
         const job = url.searchParams.get("job") ?? "";
         if (!/^job_[A-Za-z0-9_-]+$/.test(job)) fail(400, "Invalid download job.");
-        return send(response, 200, await lmJson(`/api/v1/models/download/status/${job}`));
+        const runner = runnerFor(validatedText(url.searchParams.get("runner") ?? "lmstudio", 40, "runner"));
+        return send(response, 200, await runner.downloadStatus(job));
       }
       if (request.method === "POST" && url.pathname === "/api/local/chat") {
         const input = await bodyOf(request);
+        const runner = runnerFor(validatedText(input.runner ?? "lmstudio", 40, "runner"));
         const model = validatedText(input.model, 200, "local model");
         const prompt = validatedText(input.prompt, 10_000, "prompt");
         if (!prompt) fail(400, "Enter a prompt.");
-        const installed = await lmJson("/api/v1/models");
-        if (!Array.isArray(installed.models) || !installed.models.some((item) => item.key === model && item.type === "llm")) {
-          fail(400, "Choose an installed local language model.");
-        }
-        const result = await lmJson("/api/v1/chat", {
-          method: "POST", timeoutMs: 180_000, headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model, input: prompt, stream: false, store: false }),
-        });
-        const output = Array.isArray(result.output)
-          ? result.output.filter((item) => item.type === "message" && typeof item.content === "string").map((item) => item.content).join("\n")
-          : "";
-        if (!output) fail(502, "The local model returned no text response.");
-        const run = { id: randomUUID(), at: new Date().toISOString(), model, prompt, output, modelInstance: result.model_instance_id ?? null };
+        const result = await runner.run(model, prompt);
+        const run = { id: randomUUID(), at: new Date().toISOString(), runner: runner.id, model, prompt, ...result };
         const state = loadState(dataDir);
         state.runs.unshift(run);
         saveState(dataDir, state);

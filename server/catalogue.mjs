@@ -2,34 +2,26 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const emptyState = () => ({ version: 1, lastRefresh: null, models: [], runs: [] });
+const emptyState = () => ({ version: 2, lastRefresh: null, models: [], runs: [] });
 
-export function normaliseHfModels(items, seenAt) {
-  if (!Array.isArray(items)) throw new Error("The publisher returned an unexpected model list.");
-  return items.flatMap((item) => {
-    const id = item?.id ?? item?.modelId;
-    if (typeof id !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(id)) return [];
-    const tags = Array.isArray(item.tags) ? item.tags.filter((tag) => typeof tag === "string").slice(0, 80) : [];
-    return [{
-      id,
-      source: "huggingface",
-      url: `https://huggingface.co/${id}`,
-      revision: typeof item.sha === "string" ? item.sha : null,
-      updatedAt: typeof item.lastModified === "string" ? item.lastModified : null,
-      seenAt,
-      task: typeof item.pipeline_tag === "string" ? item.pipeline_tag : null,
-      library: typeof item.library_name === "string" ? item.library_name : null,
-      downloads: Number.isFinite(item.downloads) ? item.downloads : null,
-      gated: Boolean(item.gated),
-      gguf: tags.some((tag) => tag.toLowerCase() === "gguf") || /-gguf$/i.test(id),
-      tags,
-    }];
-  });
+export function modelKey(model) {
+  return `${model.source}:${model.id}`;
+}
+
+function upgradeModel(model) {
+  // Version 1 stored an LM Studio-specific flag on every catalogue entry.
+  const { gguf, ...record } = model;
+  const formats = Array.isArray(record.formats) ? record.formats : [];
+  return {
+    ...record,
+    key: modelKey(record),
+    formats: gguf && !formats.includes("gguf") ? [...formats, "gguf"] : formats,
+  };
 }
 
 export function mergeModels(existing, incoming) {
-  const byId = new Map(existing.map((model) => [model.id, model]));
-  for (const model of incoming) byId.set(model.id, model);
+  const byId = new Map(existing.map((model) => [modelKey(model), model]));
+  for (const model of incoming) byId.set(modelKey(model), model);
   return [...byId.values()].sort((a, b) =>
     (b.updatedAt ?? b.seenAt ?? "").localeCompare(a.updatedAt ?? a.seenAt ?? ""));
 }
@@ -43,23 +35,29 @@ export function searchItems(items, query, fields) {
   });
 }
 
+// Index values, including fields added by later adapters, without prescribing
+// a model type or a particular shape for an experiment's recorded output.
+function values(item) {
+  return item == null ? [] : Array.isArray(item)
+    ? item.flatMap(values) : typeof item === "object"
+      ? Object.values(item).flatMap(values) : [String(item)];
+}
+
 export function searchModels(models, query) {
-  return searchItems(models, query, (model) =>
-    [model.id, model.task ?? "", model.library ?? "", ...(model.tags ?? [])]);
+  return searchItems(models, query, values);
 }
 
 export function searchRuns(runs, query) {
-  return searchItems(runs, query, (run) =>
-    [run.model, run.prompt, run.output, run.catalogueId ?? ""]);
+  return searchItems(runs, query, values);
 }
 
 export function loadState(dataDir) {
   try {
     const state = JSON.parse(readFileSync(join(dataDir, "workbench.json"), "utf8"));
-    if (state.version !== 1 || !Array.isArray(state.models) || !Array.isArray(state.runs)) {
+    if (![1, 2].includes(state.version) || !Array.isArray(state.models) || !Array.isArray(state.runs)) {
       throw new Error("Unsupported local catalogue format.");
     }
-    return state;
+    return { ...state, version: 2, models: state.models.map(upgradeModel) };
   } catch (error) {
     if (error.code === "ENOENT") return emptyState();
     throw error;

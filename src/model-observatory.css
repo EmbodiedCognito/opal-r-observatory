@@ -10,6 +10,7 @@
 .model-panel button.secondary { margin-top: 9px; border-color: #354154; background: #0d1420; }
 .model-panel a { display: inline-block; margin: 10px 0; color: var(--cyan); font-size: 11px; }
 .model-controls { display: flex; gap: 8px; }
+.model-controls select { width: auto; max-width: 35%; flex: 0 1 auto; }
 .model-controls input { flex: 1; }
 .model-controls button { white-space: nowrap; }
 .model-search { display: flex; align-items: center; gap: 8px; margin-top: 13px; padding: 0 9px; border: 1px solid #34445a; border-radius: 5px; color: var(--muted); }
@@ -34,4 +35,4 @@
 .model-runs p { font-size: 11px; color: #b9c6d5; }
 .model-runs pre { max-height: 170px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; }
 @media (max-width: 900px) { .model-columns { grid-template-columns: 1fr; } }
-@media (max-width: 720px) { .model-observatory { padding: 20px 16px; }.model-controls { flex-direction: column; } }
+@media (max-width: 720px) { .model-observatory { padding: 20px 16px; }.model-controls { flex-direction: column; }.model-controls select { width: 100%; max-width: none; } }

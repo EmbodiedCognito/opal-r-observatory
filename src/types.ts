@@ -34,6 +34,7 @@ export interface AnalysisDefinition {
 
 export interface Proposal {
   id: string;
+  datasetRevision: number;
   title: string;
   rationale: string;
   analysisId: string;
@@ -49,6 +50,8 @@ export interface AnalysisMapping {
 
 export interface AnalysisResult {
   id: string;
+  datasetName: string;
+  datasetRevision: number;
   title: string;
   summary: string;
   details: string[];

@@ -68,6 +68,7 @@ export default function App() {
   });
   const [runtimeState, setRuntimeState] = useState<"idle" | "loading" | "running" | "ready" | "error">("idle");
   const fileInput = useRef<HTMLInputElement>(null);
+  const datasetRevision = useRef(0);
   const recommended = useMemo(
     () => (dataset ? recommendAnalyses(dataset) : analyses.slice(0, 3)),
     [dataset],
@@ -82,8 +83,22 @@ export default function App() {
     return Boolean(mapping.group);
   }, [dataset, mapping, selected]);
 
+  const activateDataset = (next: Dataset) => {
+    datasetRevision.current += 1;
+    setDataset(next);
+    setSelected(null);
+    setMapping({});
+    setProposal(null);
+    setRuntimeState("idle");
+  };
+
+  const changeMapping = (next: AnalysisMapping) => {
+    setMapping(next);
+    setProposal(null);
+  };
+
   const loadExample = () => {
-    setDataset(exampleDataset);
+    activateDataset(exampleDataset);
     setView("workspace");
     setMessage(
       "I found three continuous measures and one grouping variable. A group comparison or relationship model would be defensible starting points.",
@@ -93,7 +108,7 @@ export default function App() {
   const loadSynthetic = () => {
     try {
       const generated = generateSyntheticDataset(synthetic);
-      setDataset(generated);
+      activateDataset(generated);
       setSyntheticError("");
       setSyntheticOpen(false);
       setView("workspace");
@@ -145,7 +160,7 @@ export default function App() {
             data.map((row) => row[name]),
           ),
         );
-        setDataset({ name: file.name, rows: data, variables: variables ?? [] });
+        activateDataset({ name: file.name, rows: data, variables: variables ?? [] });
         setMessage(
           `Imported ${data.length.toLocaleString()} rows. I inferred measurement types, but you should verify them before modelling.`,
         );
@@ -189,12 +204,17 @@ export default function App() {
 
   const prepareAnalysis = () => {
     if (!selected || !dataset) return;
-    setProposal(proposalFor(selected, dataset, mapping));
+    setProposal({ ...proposalFor(selected, dataset, mapping), datasetRevision: datasetRevision.current });
     setMessage(`Prepared a transparent ${selected.name} plan from your selected variables. Review the R code before running it.`);
   };
 
   const decideProposal = async (approved: boolean) => {
     if (!proposal || !selected || !dataset) return;
+    if (proposal.datasetRevision !== datasetRevision.current) {
+      setProposal(null);
+      setMessage("The dataset changed. Prepare a new analysis plan before approving it.");
+      return;
+    }
     setProposal({ ...proposal, status: approved ? "approved" : "rejected" });
     if (approved) {
       setView("results");
@@ -206,6 +226,8 @@ export default function App() {
         setResults((current) => [
           {
             id: proposal.id,
+            datasetName: dataset.name,
+            datasetRevision: proposal.datasetRevision,
             title: selected.name,
             summary: "Analysis completed locally",
             details: [
@@ -227,6 +249,8 @@ export default function App() {
         setResults((current) => [
           {
             id: proposal.id,
+            datasetName: dataset.name,
+            datasetRevision: proposal.datasetRevision,
             title: selected.name,
             summary: "R execution failed",
             details: [
@@ -331,7 +355,7 @@ export default function App() {
                   <div className="orb"><Sparkles size={20} /></div>
                   <span className="eyebrow">OPEN STATISTICAL WORKSPACE</span>
                   <h1>Map the question.<br /><em>Keep the machinery visible.</em></h1>
-                  <p>Bring any dataset, work visually or directly in R, and consult Aster without surrendering control of the analysis.</p>
+                  <p>Bring a CSV, configure supported analyses visually, and inspect the R code before running it locally.</p>
                   <div className="hero-actions">
                     <button className="primary" onClick={() => fileInput.current?.click()}><FileUp size={15} /> Import a dataset</button>
                     <button className="secondary" onClick={loadExample}><BookOpen size={15} /> Open example project</button>
@@ -367,21 +391,21 @@ export default function App() {
                       <div className="mapping-fields">
                         {selected.id !== "describe" && (
                           <label>Outcome
-                            <select value={mapping.outcome ?? ""} onChange={(event) => setMapping({ ...mapping, outcome: event.target.value })}>
+                            <select value={mapping.outcome ?? ""} onChange={(event) => changeMapping({ ...mapping, outcome: event.target.value })}>
                               {dataset.variables.filter((variable) => variable.kind === "continuous").map((variable) => <option key={variable.id} value={variable.name}>{variable.label}</option>)}
                             </select>
                           </label>
                         )}
                         {(selected.id === "correlation" || selected.id === "regression") && (
                           <label>Predictor
-                            <select value={mapping.predictor ?? ""} onChange={(event) => setMapping({ ...mapping, predictor: event.target.value })}>
+                            <select value={mapping.predictor ?? ""} onChange={(event) => changeMapping({ ...mapping, predictor: event.target.value })}>
                               {dataset.variables.filter((variable) => variable.kind === "continuous").map((variable) => <option key={variable.id} value={variable.name}>{variable.label}</option>)}
                             </select>
                           </label>
                         )}
                         {(selected.id === "t-test" || selected.id === "anova") && (
                           <label>Grouping variable
-                            <select value={mapping.group ?? ""} onChange={(event) => setMapping({ ...mapping, group: event.target.value })}>
+                            <select value={mapping.group ?? ""} onChange={(event) => changeMapping({ ...mapping, group: event.target.value })}>
                               {dataset.variables.filter((variable) =>
                                 (variable.kind === "nominal" || variable.kind === "ordinal") &&
                                 (selected.id !== "t-test" || variable.unique === 2),
@@ -438,7 +462,7 @@ export default function App() {
               {results.length ? results.map((result) => (
                 <article className="result-card" key={result.id}>
                   <div className="result-icon"><BarChart3 /></div>
-                  <div><span className="eyebrow">APPROVED PLAN</span><h3>{result.title}</h3><strong>{result.summary}</strong>
+                  <div><span className="eyebrow">APPROVED PLAN · {result.datasetName} · dataset {result.datasetRevision}</span><h3>{result.title}</h3><strong>{result.summary}</strong>
                     <ul>{result.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
                     {result.runtime && <span className="runtime-badge">{result.runtime}</span>}
                     {result.output && <div className="r-output"><span>R OUTPUT</span><pre>{result.output}</pre></div>}
@@ -451,10 +475,10 @@ export default function App() {
 
           {view === "r" && (
             <div className="panel-view">
-              <div className="section-heading"><div><span className="eyebrow">R CONSOLE</span><h2>Visible code, isolated execution.</h2></div></div>
+              <div className="section-heading"><div><span className="eyebrow">R PLAN</span><h2>Visible code, local execution.</h2></div></div>
               <div className="terminal">
                 <div className="terminal-head"><TerminalSquare size={15} /> opal-session <span>{runtimeState === "idle" ? "starts on approval" : runtimeState}</span></div>
-                <pre>{`# Opal records generated code here before execution.\n# Connect an isolated R adapter to enable evaluation.\n\n${proposal?.rCode ?? "opal_data <- read.csv(\"your-data.csv\")\nsummary(opal_data)"}`}</pre>
+                <pre>{proposal?.rCode ?? "# Choose an analysis to preview its generated R code.\n# Execution output appears in Results."}</pre>
               </div>
               <div className="notice"><ShieldCheck size={18} /><p><strong>Local runtime boundary</strong>Approved, Opal-generated R runs in a WebAssembly worker inside the browser. Imported rows are not sent to Opal or Aster. Closing the tab discards the session.</p></div>
             </div>
@@ -462,7 +486,7 @@ export default function App() {
         </section>
 
         <aside className="rail agent-rail">
-          <div className="agent-title"><div className="agent-mark"><Sparkles size={17} /></div><div><small>ANALYTICAL CONSULTANT</small><strong>Aster</strong></div><span>ACTIVE</span></div>
+          <div className="agent-title"><div className="agent-mark"><Sparkles size={17} /></div><div><small>GUIDANCE PREVIEW</small><strong>Aster</strong></div><span>NOT CONNECTED</span></div>
           <div className="agent-state"><i /> {dataset ? `Reading ${dataset.variables.length} variables` : "Awaiting project"}</div>
           <div className="guidance">
             <small>CURRENT GUIDANCE</small>
@@ -480,7 +504,7 @@ export default function App() {
             <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask about data, models or R…" />
             <button aria-label="Send" onClick={submitMessage}><Play size={14} /></button>
           </div>
-          <p className="agent-note">Aster can propose actions. You approve every execution.</p>
+          <p className="agent-note">Model integration is planned. The current analysis suggestions use local rules.</p>
         </aside>
       </main>
       {syntheticOpen && (

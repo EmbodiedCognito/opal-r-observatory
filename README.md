@@ -5,7 +5,7 @@
 Opal is an open, agent-guided visual environment for statistical analysis in R. It combines the approachability of a visual statistics package with inspectable R code and an explicit human-approval boundary for agent actions.
 
 > [!IMPORTANT]
-> Opal is an early research prototype, not validated statistical or clinical software. The current browser release generates reproducible analysis plans but does not execute R. Never treat generated recommendations as a substitute for statistical expertise.
+> Opal is an early research prototype, not validated statistical or clinical software. It can run five supported base-R analyses in the browser after webR downloads; this is not a general R console. Never treat generated recommendations as a substitute for statistical expertise.
 
 ## Why Opal
 
@@ -40,9 +40,9 @@ Browser workbench
 ├── Schema inference
 ├── Method catalogue and deterministic recommendation rules
 ├── Aster proposal boundary
-├── Approval ledger
+├── Session-only approval and result history
 └── Runtime adapter interface
-    ├── Local R / WebR (planned)
+    ├── Browser R / webR (downloads on first use)
     └── Isolated server R sessions (planned)
 ```
 

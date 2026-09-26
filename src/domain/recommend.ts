@@ -60,7 +60,7 @@ export function proposalFor(analysis: AnalysisDefinition, dataset: Dataset, mapp
   return {
     id: `${analysis.id}-${Date.now()}`,
     title: `Run ${analysis.name}`,
-    rationale: `${analysis.description} Opal selected variables by inferred measurement type; inspect and edit the generated R before execution.`,
+    rationale: `${analysis.description} Opal selected variables by inferred measurement type; review the mapping and generated R before execution. Change the controls to revise the plan.`,
     analysisId: analysis.id,
     status: "pending" as const,
     rCode: code[analysis.id],

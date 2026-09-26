@@ -2,10 +2,10 @@
 
 **Map the question. Keep the machinery visible.**
 
-Opal is an open, agent-guided visual environment for statistical analysis in R. It combines the approachability of a visual statistics package with inspectable R code and an explicit human-approval boundary for agent actions.
+Opal is an open local workbench for inspecting statistical analyses in R and exploring published AI models. It combines visual R controls with visible generated code and a saved model catalogue that can be searched offline.
 
 > [!IMPORTANT]
-> Opal is an early research prototype, not validated statistical or clinical software. It can run five supported base-R analyses in the browser after webR downloads; this is not a general R console. Never treat generated recommendations as a substitute for statistical expertise.
+> Opal is an early research prototype, not validated statistical or clinical software. It can run five supported base-R analyses in the browser with locally installed webR assets; this is not a general R console. Never treat generated recommendations as a substitute for statistical expertise.
 
 ## Why Opal
 
@@ -31,6 +31,9 @@ Opal is built around three commitments:
 - Override inferred measurement types and map variables through direct controls
 - Inspect data, proposals, results, and R code in dedicated workspaces
 - Run a deterministic example project without external services
+- Refresh a bounded list of public GGUF models from Hugging Face into a local catalogue
+- Search saved models and saved LM Studio runs without a network connection
+- Deliberately request a model download and run installed language models through the local LM Studio API
 
 ## Architecture
 
@@ -41,9 +44,15 @@ Browser workbench
 ├── Method catalogue and deterministic recommendation rules
 ├── Aster proposal boundary
 ├── Session-only approval and result history
+├── Model discovery and local run interface
 └── Runtime adapter interface
-    ├── Browser R / webR (downloads on first use)
+    ├── Browser R / webR (bundled from the pinned npm package)
     └── Isolated server R sessions (planned)
+
+Loopback Node service
+├── Local saved model catalogue and run history
+├── Explicit Hugging Face metadata refresh
+└── LM Studio adapter for installed models and requested downloads
 ```
 
 The deterministic recommendation layer is intentionally separate from any language model. A future Aster service may explain intent and construct proposals, but only validated commands can cross the approval boundary.
@@ -59,6 +68,23 @@ npm install
 npm run dev
 ```
 
+For the model observatory during development, run `npm run server` in a second terminal. The Vite development server proxies `/api` to the local service.
+
+## Run the local workbench
+
+Install dependencies while online, then run:
+
+```bash
+npm ci
+npm run local
+```
+
+Open `http://127.0.0.1:4317`. The built interface, fonts, base-R analyses, saved catalogue, and installed-model runs work locally without internet access. `npm run local` rebuilds the interface from installed dependencies, including a copy of webR's runtime assets. The service listens only on loopback and stores catalogue entries and model prompts/responses in `~/.opal-r-observatory/workbench.json` (or `OPAL_DATA_DIR/workbench.json`). Imported CSV rows stay in the browser session and are not written to this file.
+
+In **Models**, click **Refresh online** to save up to 100 recently modified public GGUF model records from Hugging Face, optionally narrowed by a publisher query. Each refresh adds or updates entries; offline search covers only records you have saved. Refresh requires internet access. This is an initial source adapter, not a complete index of every published model.
+
+To download or run a model, start LM Studio 0.4 or newer's local API server on `127.0.0.1:1234`. Select a saved public GGUF entry and explicitly request its download, then select an installed language model for a run. A new download requires internet access; running an installed model and searching saved runs can be done offline. If LM Studio requires an API token, set `LM_STUDIO_API_TOKEN` in the local service's environment. The service never sends prompts to Hugging Face.
+
 Quality checks:
 
 ```bash
@@ -69,8 +95,8 @@ npm run check
 
 Version `0.2.0-dev` is a local analysis foundation. It does not yet provide:
 
-- language-model integration
-- persistent projects
+- Aster agent integration or automatic interpretation of statistical results
+- persistent R projects (the model catalogue and local model runs are saved)
 - publication-ready statistical reporting or independent validation
 - plugin installation
 
@@ -78,11 +104,11 @@ Those omissions are deliberate and visible in the UI.
 
 ## Local R runtime
 
-Opal loads [webR 0.6.0](https://github.com/r-wasm/webr/releases/tag/v0.6.0) from the official webR CDN only after a user approves an analysis. R runs in a browser worker through WebAssembly; imported rows are materialised inside that local session and are not uploaded to Opal.
+Opal installs [webR 0.6.0](https://github.com/r-wasm/webr/releases/tag/v0.6.0) as a pinned npm dependency. The build copies its JavaScript workers and WebAssembly assets into the locally served interface; R starts only after a user approves an analysis. Imported rows are materialised in that browser worker and are not sent to the local model catalogue service.
 
-The webR runtime and R are separately licensed GPL software. Opal does not vendor their binaries in this repository. See the [webR project](https://github.com/r-wasm/webr) for source and licence details.
+The webR runtime and R are separately licensed GPL software. Opal does not commit their binaries to this repository; the installed package supplies them at build time. See the [webR project](https://github.com/r-wasm/webr) for source and licence details.
 
-The first runtime download is substantial and requires an internet connection. A self-hosted, integrity-pinned runtime is planned before a stable release.
+Installing dependencies initially requires a connection and downloads a substantial R runtime. Once installed and built locally, base-R analyses do not fetch runtime assets from a CDN.
 
 ## Dual interface
 

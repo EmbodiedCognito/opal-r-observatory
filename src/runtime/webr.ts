@@ -9,19 +9,22 @@ interface WebRInstance {
 }
 
 interface WebRConstructor {
-  new (): WebRInstance;
+  new (options: { baseUrl: string }): WebRInstance;
 }
 
-const WEBR_MODULE = "https://webr.r-wasm.org/v0.6.0/webr.mjs";
+const WEBR_MODULE = "/webr/webr.mjs";
 let runtimePromise: Promise<WebRInstance> | null = null;
 
 export async function getWebR() {
   if (!runtimePromise) {
     runtimePromise = import(/* @vite-ignore */ WEBR_MODULE).then(async (module) => {
       const WebR = module.WebR as WebRConstructor;
-      const runtime = new WebR();
+      const runtime = new WebR({ baseUrl: new URL("/webr/", window.location.origin).href });
       await runtime.init();
       return runtime;
+    }).catch((error) => {
+      runtimePromise = null;
+      throw error;
     });
   }
   return runtimePromise;

@@ -10,7 +10,13 @@ The visual configuration is canonical. Agent dialogue must compile into the same
 
 ### Browser workbench
 
-Owns imported data, variable metadata, the analysis canvas, approvals, and result presentation. Browser-only features must work without an account or network connection after assets load.
+Owns imported CSV rows, variable metadata, the analysis canvas, approvals, and result presentation. The build serves pinned webR assets locally; R runs and results are session-only. The Models view accesses a loopback service to search saved records.
+
+### Loopback observatory service
+
+Serves the built interface and local `/api` routes on `127.0.0.1`. Its versioned JSON store saves public model metadata and local model prompts/responses atomically in the user's data directory. Catalogue search and run search use this store without contacting the publisher. Refresh requests public GGUF metadata from Hugging Face only after a user action. No imported CSV rows are sent to this service.
+
+The LM Studio adapter connects only to an explicitly configured loopback address. Listing installed models and running them remain local. A user-initiated download delegates the transfer to LM Studio; Opal does not automatically download model weights while refreshing metadata. The interface chooses an installed model separately because a publisher repository ID need not match LM Studio's installed-model key.
 
 ### Aster proposal service
 
@@ -39,6 +45,7 @@ Rejection and editing are first-class outcomes. Approval is scoped to one immuta
 
 - `domain/`: analysis catalogue, schema inference, proposal validation
 - `runtime/`: webR execution, safe dataset serialisation, and future server adapters
+- `server/`: persistent model metadata and run records, publisher adapter, and LM Studio bridge
 - `agent/`: model-provider-neutral proposal client
 - `project/`: portable project bundle and provenance
 - `ui/`: visual workbench

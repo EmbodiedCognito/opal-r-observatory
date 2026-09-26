@@ -4,17 +4,23 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/copy-webr.mjs && vite",
+    "server": "node server/index.mjs",
+    "local": "npm run build && npm run server",
+    "build": "node scripts/copy-webr.mjs && tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run && node --test server/*.node-test.mjs",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "@fontsource/dm-mono": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/newsreader": "^5.3.0",
     "lucide-react": "^0.468.0",
     "papaparse": "^5.5.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "webr": "0.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

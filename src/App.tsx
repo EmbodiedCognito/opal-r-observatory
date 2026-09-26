@@ -32,10 +32,11 @@ import {
   type SyntheticVariableSpec,
 } from "./data/synthetic";
 import { runAnalysis } from "./runtime/webr";
+import ModelObservatory from "./ModelObservatory";
 import type { AnalysisDefinition, AnalysisMapping, AnalysisResult, Dataset, Proposal } from "./types";
 import "./styles.css";
 
-type View = "workspace" | "data" | "results" | "r";
+type View = "workspace" | "data" | "results" | "r" | "models";
 
 const emptyGuidance =
   "Import data or open the example project. I’ll work from the structure of your variables and the question you want to answer.";
@@ -288,7 +289,7 @@ export default function App() {
         </div>
         <div className="project-name"><span>PROJECT</span>{dataset?.name ?? "Untitled project"}</div>
         <nav aria-label="Primary navigation">
-          {(["workspace", "data", "results", "r"] as View[]).map((item) => (
+          {(["workspace", "data", "results", "r", "models"] as View[]).map((item) => (
             <button
               className={view === item ? "active" : ""}
               key={item}
@@ -483,6 +484,7 @@ export default function App() {
               <div className="notice"><ShieldCheck size={18} /><p><strong>Local runtime boundary</strong>Approved, Opal-generated R runs in a WebAssembly worker inside the browser. Imported rows are not sent to Opal or Aster. Closing the tab discards the session.</p></div>
             </div>
           )}
+          {view === "models" && <ModelObservatory />}
         </section>
 
         <aside className="rail agent-rail">

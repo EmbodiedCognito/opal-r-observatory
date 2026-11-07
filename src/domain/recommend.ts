@@ -50,7 +50,7 @@ export function proposalFor(analysis: AnalysisDefinition, dataset: Dataset, mapp
   const column = (name: string) => `opal_data[[${JSON.stringify(name)}]]`;
 
   const code: Record<string, string> = {
-    describe: `summary(opal_data)\ncolSums(is.na(opal_data))`,
+    describe: `print(summary(opal_data))\nprint(colSums(is.na(opal_data)))`,
     correlation: `cor.test(${column(outcome)}, ${column(predictor)})`,
     "t-test": `t.test(${column(outcome)} ~ as.factor(${column(group)}))`,
     anova: `summary(aov(${column(outcome)} ~ as.factor(${column(group)})))`,

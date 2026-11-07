@@ -59,3 +59,60 @@ describe("generateSyntheticDataset", () => {
     })).toThrow("unique");
   });
 });
+
+const customOptions = {
+  template: "custom" as const, rows: 100, seed: 42, effect: 0, noise: 1, missingness: 0, groups: 2,
+};
+const customVariable = {
+  id: "a", name: "case_code", type: "identifier" as const, distribution: "uniform" as const,
+  mean: 0.5, spread: 1, min: 0, max: 10, categories: ["low", "high"],
+};
+
+describe("custom schema integrity", () => {
+  it("rejects collisions between fallback and explicit names", () => {
+    expect(() => generateSyntheticDataset({ ...customOptions, variables: [
+      { ...customVariable, name: "  " },
+      { ...customVariable, id: "b", name: " variable_1 " },
+    ] })).toThrow("unique");
+  });
+
+  it("keeps distinct fallback names", () => {
+    const dataset = generateSyntheticDataset({ ...customOptions, variables: [
+      { ...customVariable, name: "" }, { ...customVariable, id: "b", name: " " },
+    ] });
+    expect(dataset.variables.map((variable) => variable.name)).toEqual(["variable_1", "variable_2"]);
+  });
+
+  it("honors every explicitly declared measurement type", () => {
+    const types = ["identifier", "continuous", "integer", "categorical", "binary", "ordinal"] as const;
+    const dataset = generateSyntheticDataset({ ...customOptions, variables: types.map((type, index) => ({
+      ...customVariable, id: String(index), name: `field_${index}`, type,
+    })) });
+    expect(dataset.variables.map((variable) => variable.kind)).toEqual([
+      "identifier", "continuous", "continuous", "nominal", "nominal", "ordinal",
+    ]);
+    expect(dataset.variables[0].unique).toBe(100);
+    expect(dataset.variables[0].missing).toBe(0);
+  });
+
+  it("protects declared identifiers, not identifier-looking numeric fields", () => {
+    const dataset = generateSyntheticDataset({ ...customOptions, missingness: 0.4, variables: [
+      customVariable, { ...customVariable, id: "b", name: "measurement_id", type: "continuous" },
+    ] });
+    expect(dataset.variables[0].missing).toBe(0);
+    expect(dataset.variables[0].unique).toBe(100);
+    expect(dataset.variables[1].missing).toBeGreaterThan(0);
+    expect(dataset.variables[1].kind).toBe("continuous");
+  });
+});
+
+it("applies missingness to identifier-looking names when no identifiers are declared", () => {
+  const dataset = generateSyntheticDataset({ ...customOptions, missingness: 0.4, variables: [
+    { ...customVariable, name: "id", type: "continuous" },
+    { ...customVariable, id: "b", name: "measurement_id", type: "continuous" },
+  ] });
+  for (const variable of dataset.variables) {
+    expect(variable.missing).toBeGreaterThan(0);
+    expect(variable.kind).toBe("continuous");
+  }
+});

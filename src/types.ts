@@ -13,6 +13,12 @@ export interface Dataset {
   name: string;
   rows: Record<string, string | number | null>[];
   variables: Variable[];
+  provenance?: {
+    kind: "synthetic";
+    seed: number;
+    generator: string;
+    note: string;
+  };
 }
 
 export interface AnalysisDefinition {
@@ -28,6 +34,7 @@ export interface AnalysisDefinition {
 
 export interface Proposal {
   id: string;
+  datasetRevision: number;
   title: string;
   rationale: string;
   analysisId: string;
@@ -35,10 +42,20 @@ export interface Proposal {
   rCode: string;
 }
 
+export interface AnalysisMapping {
+  outcome?: string;
+  predictor?: string;
+  group?: string;
+}
+
 export interface AnalysisResult {
   id: string;
+  datasetName: string;
+  datasetRevision: number;
   title: string;
   summary: string;
   details: string[];
   rCode: string;
+  output?: string;
+  runtime?: string;
 }

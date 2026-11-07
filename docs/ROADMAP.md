@@ -12,11 +12,15 @@
 
 ## 0.2 — Reproducible local analysis
 
-- WebR proof of concept for approved base-R analyses
+- [x] webR proof of concept for approved base-R analyses
+- [x] Reproducible synthetic wellbeing generator
+- [x] Custom synthetic variable schemas with optional presets
+- [x] Direct variable mapping independent of the agent
 - Portable `.opal` project bundle
 - Immutable analysis specifications and provenance
 - Structured tables, plots, effect sizes, and assumption checks
 - Export to HTML, PDF, Quarto, and R script
+- Obsidian result embedding after the project format stabilises
 
 ## 0.3 — Aster
 

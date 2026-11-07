@@ -1,4 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+@import "@fontsource/dm-mono/latin-300.css";
+@import "@fontsource/dm-mono/latin-400.css";
+@import "@fontsource/dm-mono/latin-500.css";
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/newsreader/latin-400.css";
+@import "@fontsource/newsreader/latin-500.css";
 
 :root {
   color: #dce4ef;
@@ -143,7 +150,7 @@ td { color: #91a0b2; font-family: "DM Mono"; }
   .analysis-controls { grid-template-columns: 1fr; }.mapping-fields { flex-wrap: wrap; }
 }
 @media (max-width: 720px) {
-  .topbar { gap: 8px; padding: 0 10px; }.package-button, .runtime { display: none; } nav { margin-left: auto; } nav button { padding: 0 8px; font-size: 10px; }
+  .topbar { gap: 8px; padding: 0 10px; }.package-button, .runtime { display: none; } nav { min-width: 0; flex: 1; margin-left: auto; overflow-x: auto; } nav button { flex-shrink: 0; padding: 0 8px; font-size: 10px; }
   .workspace-grid { display: block; height: auto; }.data-rail { display: none; }.canvas { min-height: calc(100vh - 80px); }
   .hero { padding: 35px 20px; }.hero-actions, .trust-row { flex-direction: column; }.analysis-workspace, .panel-view { padding: 22px 16px; }
   .template-grid { grid-template-columns: 1fr; }

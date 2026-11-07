@@ -20,13 +20,15 @@ function send(response, status, value) {
 
 async function bodyOf(request) {
   if (!request.headers["content-type"]?.startsWith("application/json")) fail(415, "Expected JSON input.");
-  let body = "";
+  const chunks = [];
+  let byteLength = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (body.length > 16_384) fail(413, "Request is too large.");
+    byteLength += chunk.length;
+    if (byteLength > 16_384) fail(413, "Request is too large.");
+    chunks.push(chunk);
   }
   try {
-    const parsed = JSON.parse(body);
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) fail(400, "Expected a JSON object.");
     return parsed;
   } catch (error) {

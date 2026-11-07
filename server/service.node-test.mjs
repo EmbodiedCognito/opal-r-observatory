@@ -110,3 +110,55 @@ test("separate source records with the same ID coexist and remain searchable off
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// Deliberately split UTF-8 code points between HTTP body chunks.
+import { request as httpRequest } from "node:http";
+
+test("request chunks preserve Unicode and limits count bytes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "opal-unicode-"));
+  let received;
+  const runner = { id: "lmstudio", async run(model, prompt) {
+    received = prompt;
+    return { output: prompt };
+  } };
+  const server = createOpalServer({ dataDir: directory, staticDir: directory, sources: [], runners: [runner] });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const sendChunks = (body, cuts) => new Promise((resolve, reject) => {
+    const request = httpRequest({ hostname: "127.0.0.1", port: server.address().port,
+      path: "/api/local/chat", method: "POST",
+      headers: { "content-type": "application/json", "content-length": body.length },
+    }, (response) => {
+      let text = "";
+      response.on("data", (chunk) => { text += chunk; });
+      response.on("end", () => resolve({ status: response.statusCode, body: JSON.parse(text) }));
+    });
+    request.on("error", reject);
+    const boundaries = [0, ...cuts, body.length];
+    let index = 0;
+    const writeNext = () => {
+      request.write(body.subarray(boundaries[index], boundaries[index + 1]));
+      index += 1;
+      if (index === boundaries.length - 1) request.end();
+      else setTimeout(writeNext, 30);
+    };
+    writeNext();
+  });
+  try {
+    const prompt = "café 🧪 漢字";
+    const body = Buffer.from(JSON.stringify({ model: "installed", prompt }));
+    const result = await sendChunks(body, [body.indexOf(Buffer.from("é")) + 1,
+      body.indexOf(Buffer.from("🧪")) + 2, body.indexOf(Buffer.from("漢")) + 1]);
+    assert.equal(result.status, 200);
+    assert.equal(received, prompt);
+    assert.equal(result.body.run.prompt, prompt);
+    assert.equal(loadState(directory).runs[0].prompt, prompt);
+    const oversized = Buffer.from(JSON.stringify({ model: "installed", prompt: "é".repeat(9000) }));
+    assert.equal((await sendChunks(oversized, [])).status, 413);
+    assert.equal(loadState(directory).runs.length, 1);
+  } finally {
+    server.close();
+    await once(server, "close");
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

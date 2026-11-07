@@ -87,21 +87,25 @@ function applyMissingness(
   rows: Record<string, string | number | null>[],
   random: () => number,
   rate: number,
+  identifiers?: Set<string>,
 ) {
   if (rate <= 0) return rows;
   return rows.map((row) => Object.fromEntries(
     Object.entries(row).map(([key, value]) => {
-      const identifier = /(^|_)id$|^id$/.test(key);
+      const identifier = identifiers ? identifiers.has(key) : /(^|_)id$|^id$/.test(key);
       return [key, !identifier && random() < rate ? null : value];
     }),
   ));
 }
 
+function resolvedVariableName(name: string, index: number) {
+  return name.trim() || `variable_${index + 1}`;
+}
+
 function customRows(count: number, random: () => number, options: SyntheticOptions) {
-  const safeName = (name: string, index: number) => name.trim() || `variable_${index + 1}`;
   return Array.from({ length: count }, (_, rowIndex) =>
     Object.fromEntries(options.variables.map((variable, variableIndex) => {
-      const name = safeName(variable.name, variableIndex);
+      const name = resolvedVariableName(variable.name, variableIndex);
       let value: string | number;
       switch (variable.type) {
         case "identifier":
@@ -233,7 +237,7 @@ export function generateSyntheticDataset(options: SyntheticOptions): Dataset {
     throw new Error("Add at least one variable to generate a custom dataset.");
   }
   if (normalised.template === "custom") {
-    const names = normalised.variables.map((variable) => variable.name.trim()).filter(Boolean);
+    const names = normalised.variables.map((variable, index) => resolvedVariableName(variable.name, index));
     if (new Set(names).size !== names.length) {
       throw new Error("Variable names must be unique.");
     }
@@ -242,18 +246,32 @@ export function generateSyntheticDataset(options: SyntheticOptions): Dataset {
     );
     if (invalidRange) throw new Error(`${invalidRange.name || "A variable"} needs a minimum below its maximum.`);
   }
+  const customSchema = normalised.template === "custom"
+    ? new Map(normalised.variables.map((variable, index) =>
+      [resolvedVariableName(variable.name, index), variable] as const))
+    : null;
+  const identifiers = customSchema
+    ? new Set([...customSchema].filter(([, variable]) => variable.type === "identifier").map(([name]) => name))
+    : undefined;
   const data = applyMissingness(
     factories[normalised.template](rows, random, normalised),
     random,
     normalised.missingness,
+    identifiers,
   );
 
   return {
     name: `${syntheticTemplates[normalised.template].name} · n=${rows} · seed=${seed}`,
     rows: data,
-    variables: Object.keys(data[0]).map((name) =>
-      inferVariable(name, data.map((row) => row[name])),
-    ),
+    variables: Object.keys(data[0]).map((name) => {
+      const inferred = inferVariable(name, data.map((row) => row[name]));
+      const declared = customSchema?.get(name);
+      if (!declared) return inferred;
+      const kind = declared.type === "integer" ? "continuous"
+        : declared.type === "categorical" || declared.type === "binary" ? "nominal"
+          : declared.type;
+      return { ...inferred, kind };
+    }),
     provenance: {
       kind: "synthetic",
       seed,

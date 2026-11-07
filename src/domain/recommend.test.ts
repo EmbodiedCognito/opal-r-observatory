@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferVariable, recommendAnalyses } from "./recommend";
+import { inferVariable, proposalFor, recommendAnalyses } from "./recommend";
 import type { Dataset } from "../types";
 
 describe("inferVariable", () => {
@@ -26,5 +26,15 @@ describe("recommendAnalyses", () => {
     };
     const ids = recommendAnalyses(dataset).map((analysis) => analysis.id);
     expect(ids).toEqual(["describe", "correlation", "t-test", "anova", "regression"]);
+  });
+});
+
+describe("proposalFor", () => {
+  it("explicitly prints both descriptive statistics and missing counts for console capture", () => {
+    const dataset: Dataset = { name: "test", rows: [], variables: [] };
+    const analysis = recommendAnalyses(dataset).find((item) => item.id === "describe")!;
+    expect(proposalFor(analysis, dataset).rCode).toBe(
+      "print(summary(opal_data))\nprint(colSums(is.na(opal_data)))",
+    );
   });
 });

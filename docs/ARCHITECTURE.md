@@ -10,7 +10,7 @@ The visual configuration is canonical. Agent dialogue must compile into the same
 
 ### Browser workbench
 
-Owns imported CSV rows, variable metadata, the analysis canvas, approvals, and result presentation. The build serves pinned webR assets locally; R runs and results are session-only. The Models view accesses a loopback service to search saved records.
+Owns imported CSV rows, variable metadata, the analysis canvas, approvals, and result presentation. The build serves pinned webR assets locally; R approvals remain session-only. Data and recorded results can be explicitly exported in a portable project file. The Models view accesses a loopback service to search saved records.
 
 ### Loopback observatory service
 
@@ -57,3 +57,9 @@ Rejection and editing are first-class outcomes. Approval is scoped to one immuta
 The portable project/result format is also the intended integration boundary for future clients such as an Obsidian plugin. Editor-specific integration should not own analysis state.
 
 The prototype keeps UI code compact while the boundaries stabilise. Extraction into packages should follow working interfaces, not precede them.
+
+## Portable utility projects
+
+`project/bundle.ts` defines the v1 `.opal` JSON format with bounded validation, independent source snapshots and source-linked R records. Model-run attachments are explicit copies of selected saved text runs, not implicit data-sharing or analytical links. Unknown fields are discarded. Missing source references, duplicate identities, unsupported versions, invalid cells and oversized files are rejected before state replacement. No imported code or approval reaches the runtime. Restore uses the snapshot and mapping to generate a new catalogue plan for approval. This utility format does not define or constrain a future general experimental engine.
+
+`project/recovery.ts` maintains a separate bounded per-tab session-storage checkpoint. Reads pass through the same strict project validator. The app seeds project state from this checkpoint but never restores an approval or resumes a pending runtime call. Writes are atomic sessionStorage replacements; failure leaves the older value intact and surfaces a warning. Corrupt/unsupported recovery blocks subsequent automatic overwriting for that tab lifecycle. The downloadable project remains the durable portability boundary.

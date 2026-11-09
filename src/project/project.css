@@ -1,0 +1,36 @@
+.project-panel { max-width: 980px; margin: auto; }
+.project-panel > p { line-height: 1.65; }
+.project-label { display: grid; gap: 8px; max-width: 520px; margin: 24px 0 16px; }
+.project-label input { padding: 12px; border: 1px solid #405065; border-radius: 8px; font: inherit; background: #0b1420; color: #e3edf7; }
+.project-actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.project-note { color: #a7b6c8; font-size: 13px; line-height: 1.6; }
+.project-message { padding: 16px; background: #17392f; border-radius: 8px; }
+.project-review { padding: 20px; border: 2px solid #53796c; background: #142d2a; border-radius: 12px; }
+.project-review label { display: flex; align-items: start; gap: 10px; line-height: 1.6; }
+.project-record { border: 1px solid #405065; padding: 20px; margin: 14px 0; border-radius: 12px; background: #101a26; }
+.project-record small { display: block; margin: 8px 0; }
+.project-record pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-record details { margin: 14px 0; }
+.project-panel button:disabled { opacity: .5; cursor: not-allowed; }
+
+.project-save-status { display: block; border: 0; background: transparent; color: #a7b6c8; font: inherit; font-size: 11px; padding: 6px 0; flex-shrink: 0; white-space: nowrap; text-align: left; cursor: pointer; }
+.project-save-status.unsaved { color: #f1bb6a; font-weight: 600; }
+/* Keep project names from displacing navigation or the always-visible save action. */
+.app-shell .topbar { gap: 16px; }
+.topbar .project-name { min-width: 0; max-width: 260px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; line-height: 36px; }
+.topbar .project-name > span { margin-right: 12px; }
+.topbar nav { min-width: 0; flex-shrink: 1; overflow-x: auto; }
+.topbar nav button { flex-shrink: 0; }
+.topbar .brand, .topbar .runtime { flex-shrink: 0; }
+@media (max-width: 1400px) {
+  .topbar .project-name { display: none; }
+  .topbar .brand { min-width: auto; }
+  .topbar nav { margin-left: auto; }
+}
+@media (max-width: 720px) {
+  .app-shell .topbar { gap: 8px; }
+  .project-save-status { font-size: 10px; }
+}
+
+.recovery-alert { padding: 10px 18px; background: #422b15; color: #ffe1ab; font-size: 13px; line-height: 1.5; }
+.recovery-alert button { border: 1px solid #c79b61; border-radius: 4px; padding: 4px 8px; margin-left: 8px; background: transparent; }

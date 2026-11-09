@@ -19,3 +19,9 @@ The optional local observatory service binds to `127.0.0.1`, stores published mo
 Execution features must assume that generated R, uploaded datasets, packages, result payloads, and model responses are untrusted. Opal does not currently expose a free-form R evaluator. Controls must include isolation, strict resource limits, output sanitisation, dependency locking, explicit data-flow disclosure, and per-action approval.
 
 API credentials must never be stored in browser bundles or committed to the repository.
+
+## Project files
+
+`.opal` files can contain raw dataset rows and deliberately attached model prompts/responses. They are unencrypted local downloads with an explicit UI warning; Opal does not upload them. Imported strings are displayed as text, never HTML or executable R. Imports have a 20 MB byte limit and a cumulative one-million-cell allocation limit and strict shape, reference, count and identity validation. Restoring a setup regenerates supported catalogue code and requires fresh approval rather than trusting the saved code. User confirmation precedes replacement of current work. Recorded output and provenance in an imported file are unverified claims, not cryptographically authenticated evidence.
+
+A bounded (2 MB) local recovery copy of the project is stored in this tab's session storage, including data rows and explicitly attached conversations. This is accessible to this origin's scripts, like the running app's memory, and is not encrypted. It is not uploaded. Tab closure normally removes it, though browser session restoration may retain it. Invalid recovery is left untouched; quota or size failures retain the previous copy and display a save-required warning. Recovery does not restore execution approvals or pending runs.

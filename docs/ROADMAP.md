@@ -16,8 +16,8 @@
 - [x] Reproducible synthetic wellbeing generator
 - [x] Custom synthetic variable schemas with optional presets
 - [x] Direct variable mapping independent of the agent
-- Portable `.opal` project bundle
-- Immutable analysis specifications and provenance
+- [x] Portable `.opal` v1 bundle for existing R data/results and explicitly attached model runs
+- [x] Per-analysis source snapshots, mapping, code, runtime and timestamps (imported claims are not independently authenticated)
 - Structured tables, plots, effect sizes, and assumption checks
 - Export to HTML, PDF, Quarto, and R script
 - Obsidian result embedding after the project format stabilises
@@ -31,7 +31,8 @@
 - More source adapters, pagination, incremental refresh, and richer source metadata
 - Additional local execution surfaces for non-GGUF and non-language experiments
 - General experiment records with typed inputs, outputs, and provenance, linked to analyses and datasets
-- Portable project format linking model runs and R analyses to the source data
+- [x] Portable utility project with source-linked R analyses and explicit model-run attachments
+- General typed experiment record and environment/state trace replay remain separate work
 - [x] Offline packaged webR assets for first-time R execution after dependency installation
 
 ## 0.3 — Aster

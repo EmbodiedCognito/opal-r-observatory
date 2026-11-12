@@ -38,3 +38,7 @@ describe("proposalFor", () => {
     );
   });
 });
+
+it("keeps distinct CSV names distinct even when punctuation or case differs", () => {
+  expect(new Set(["score-a", "score a", "Score A", "研究"].map(name => inferVariable(name, [1]).id)).size).toBe(4);
+});

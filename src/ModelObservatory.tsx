@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Database, Download, Play, RefreshCw, Search } from "lucide-react";
 import "./model-observatory.css";
+import type { ModelRunRecord } from "./project/bundle";
 
 interface CatalogueModel {
   key: string;
@@ -45,7 +46,7 @@ async function api<T>(path: string, input?: object): Promise<T> {
   return result as T;
 }
 
-export default function ModelObservatory() {
+export default function ModelObservatory({ onAttachRun, attachedRunIds }: { onAttachRun: (run: ModelRunRecord) => void; attachedRunIds: string[] }) {
   const [search, setSearch] = useState("");
   const [publisherQuery, setPublisherQuery] = useState("");
   const [source, setSource] = useState("huggingface");
@@ -262,6 +263,7 @@ export default function ModelObservatory() {
           <div className="model-runs">{runs.map((item) => <article key={item.id}>
             <strong>{item.model}</strong><small>{new Date(item.at).toLocaleString()}</small>
             <p>{item.prompt}</p><pre>{item.output}</pre>
+            <button disabled={attachedRunIds.includes(item.id)} onClick={() => onAttachRun(item)}>{attachedRunIds.includes(item.id) ? "Attached to project" : "Attach to project"}</button>
           </article>)}{!runs.length && <p>No saved runs match this search.</p>}</div>
         </section>
       </div>

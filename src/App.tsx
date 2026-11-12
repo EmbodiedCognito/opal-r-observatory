@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import {
   Activity,
@@ -33,10 +33,13 @@ import {
 } from "./data/synthetic";
 import { runAnalysis } from "./runtime/webr";
 import ModelObservatory from "./ModelObservatory";
-import type { AnalysisDefinition, AnalysisMapping, AnalysisResult, Dataset, Proposal } from "./types";
+import ProjectPanel from "./project/ProjectPanel";
+import { readRecovery, writeRecovery } from "./project/recovery";
+import { projectContent, warnBeforeClosing, validateModelRun, type DatasetSnapshot, type SavedAnalysis, type ModelRunRecord, type ProjectBundle } from "./project/bundle";
+import type { AnalysisDefinition, AnalysisMapping, Dataset, Proposal } from "./types";
 import "./styles.css";
 
-type View = "workspace" | "data" | "results" | "r" | "models";
+type View = "workspace" | "data" | "results" | "r" | "models" | "project";
 
 const emptyGuidance =
   "Import data or open the example project. I’ll work from the structure of your variables and the question you want to answer.";
@@ -48,13 +51,44 @@ const starterVariables: SyntheticVariableSpec[] = [
 ];
 
 export default function App() {
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [recovered] = useState(() => readRecovery());
+  const [dataset, setDataset] = useState<Dataset | null>(recovered.project?.dataset ?? null);
   const [view, setView] = useState<View>("workspace");
   const [selected, setSelected] = useState<AnalysisDefinition | null>(null);
   const [mapping, setMapping] = useState<AnalysisMapping>({});
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [results, setResults] = useState<AnalysisResult[]>([]);
-  const [message, setMessage] = useState("");
+  const [results, setResults] = useState<SavedAnalysis[]>(recovered.project?.analyses ?? []);
+  const [snapshots, setSnapshots] = useState<DatasetSnapshot[]>(recovered.project?.snapshots ?? []);
+  const [modelRuns, setModelRuns] = useState<ModelRunRecord[]>(recovered.project?.modelRuns ?? []);
+  const [projectName, setProjectName] = useState(recovered.project?.name ?? "Untitled project");
+  const [savedContent, setSavedContent] = useState(() => projectContent({
+    format: "opal-project", version: 1, name: "Untitled project", savedAt: "",
+    dataset: null, snapshots: [], analyses: [], modelRuns: [],
+  }));
+  const project = useMemo<ProjectBundle>(() => ({
+    format: "opal-project", version: 1, name: projectName, savedAt: new Date().toISOString(),
+    dataset, snapshots, analyses: results, modelRuns,
+  }), [projectName, dataset, snapshots, results, modelRuns]);
+  const content = useMemo(() => projectContent(project), [project]);
+  const [recoveryStatus, setRecoveryStatus] = useState(recovered.message);
+  useEffect(() => {
+    if (recovered.blocked) return;
+    const status = writeRecovery(project);
+    let active = true;
+    queueMicrotask(() => { if (active) setRecoveryStatus(status); });
+    const preserve = () => { writeRecovery(project); };
+    window.addEventListener("pagehide", preserve);
+    return () => { active = false; window.removeEventListener("pagehide", preserve); };
+  }, [project, recovered.blocked]);
+  const dirty = content !== savedContent;
+  useEffect(() => {
+    if (!dirty) return;
+    window.addEventListener("beforeunload", warnBeforeClosing);
+    return () => window.removeEventListener("beforeunload", warnBeforeClosing);
+  }, [dirty]);
+  const executing = useRef(false);
+  const [executionBusy, setExecutionBusy] = useState(false);
+  const [message, setMessage] = useState(recovered.message);
   const [syntheticOpen, setSyntheticOpen] = useState(false);
   const [syntheticError, setSyntheticError] = useState("");
   const [synthetic, setSynthetic] = useState<SyntheticOptions>({
@@ -70,6 +104,7 @@ export default function App() {
   const [runtimeState, setRuntimeState] = useState<"idle" | "loading" | "running" | "ready" | "error">("idle");
   const fileInput = useRef<HTMLInputElement>(null);
   const datasetRevision = useRef(0);
+  const importGeneration = useRef(0);
   const recommended = useMemo(
     () => (dataset ? recommendAnalyses(dataset) : analyses.slice(0, 3)),
     [dataset],
@@ -85,12 +120,14 @@ export default function App() {
   }, [dataset, mapping, selected]);
 
   const activateDataset = (next: Dataset) => {
+    importGeneration.current += 1;
     datasetRevision.current += 1;
     setDataset(next);
+    setProjectName(current => current === "Untitled project" ? next.name : current);
     setSelected(null);
     setMapping({});
     setProposal(null);
-    setRuntimeState("idle");
+    if (!executing.current) setRuntimeState("idle");
   };
 
   const changeMapping = (next: AnalysisMapping) => {
@@ -151,10 +188,12 @@ export default function App() {
   };
 
   const importCsv = (file: File) => {
+    const generation = ++importGeneration.current;
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
       complete: ({ data, meta }) => {
+        if (generation !== importGeneration.current) return;
         const variables = meta.fields?.map((name) =>
           inferVariable(
             name,
@@ -205,12 +244,12 @@ export default function App() {
 
   const prepareAnalysis = () => {
     if (!selected || !dataset) return;
-    setProposal({ ...proposalFor(selected, dataset, mapping), datasetRevision: datasetRevision.current });
+    setProposal({ ...proposalFor(selected, dataset, mapping), id: crypto.randomUUID(), datasetRevision: datasetRevision.current });
     setMessage(`Prepared a transparent ${selected.name} plan from your selected variables. Review the R code before running it.`);
   };
 
   const decideProposal = async (approved: boolean) => {
-    if (!proposal || !selected || !dataset) return;
+    if (!proposal || !selected || !dataset || executing.current || proposal.status !== "pending") return;
     if (proposal.datasetRevision !== datasetRevision.current) {
       setProposal(null);
       setMessage("The dataset changed. Prepare a new analysis plan before approving it.");
@@ -218,15 +257,26 @@ export default function App() {
     }
     setProposal({ ...proposal, status: approved ? "approved" : "rejected" });
     if (approved) {
+      executing.current = true;
+      setExecutionBusy(true);
+      const snapshotId = crypto.randomUUID();
+      const source = structuredClone(dataset);
+      const capturedMapping = { ...mapping };
+      setSnapshots(current => [...current, { id: snapshotId, dataset: source }]);
       setView("results");
       setRuntimeState("loading");
       setMessage("Loading R into a private browser worker. The first run may take a moment.");
       try {
         setRuntimeState("running");
-        const execution = await runAnalysis(dataset, proposal.rCode);
+        const execution = await runAnalysis(source, proposal.rCode);
         setResults((current) => [
           {
             id: proposal.id,
+            snapshotId,
+            analysisId: selected.id,
+            mapping: capturedMapping,
+            completedAt: new Date().toISOString(),
+            outcome: "completed",
             datasetName: dataset.name,
             datasetRevision: proposal.datasetRevision,
             title: selected.name,
@@ -250,6 +300,11 @@ export default function App() {
         setResults((current) => [
           {
             id: proposal.id,
+            snapshotId,
+            analysisId: selected.id,
+            mapping: capturedMapping,
+            completedAt: new Date().toISOString(),
+            outcome: "failed",
             datasetName: dataset.name,
             datasetRevision: proposal.datasetRevision,
             title: selected.name,
@@ -263,10 +318,40 @@ export default function App() {
           ...current,
         ]);
         setMessage(`The local R runtime could not complete this analysis: ${reason}`);
+      } finally {
+        executing.current = false;
+        setExecutionBusy(false);
       }
     } else {
       setMessage("Proposal rejected. Nothing was executed or changed.");
     }
+  };
+
+  const openProject = (next: ProjectBundle) => {
+    if (executing.current) return;
+    activateDatasetOrEmpty(next.dataset);
+    setSavedContent(projectContent(next));
+    setProjectName(next.name); setResults(next.analyses); setSnapshots(next.snapshots); setModelRuns(next.modelRuns);
+    setMessage("Project opened locally. Review recorded results; imported code is never executed.");
+  };
+  const activateDatasetOrEmpty = (next: Dataset | null) => {
+    if (next) activateDataset(next);
+    else { importGeneration.current += 1; datasetRevision.current += 1; setDataset(null); setSelected(null); setMapping({}); setProposal(null); setRuntimeState("idle"); }
+  };
+  const restoreAnalysis = (result: SavedAnalysis) => {
+    if (executing.current) return;
+    const snapshot = snapshots.find(item => item.id === result.snapshotId);
+    const analysis = analyses.find(item => item.id === result.analysisId);
+    if (!snapshot || !analysis) return;
+    activateDataset(structuredClone(snapshot.dataset));
+    setSelected(analysis); setMapping({ ...result.mapping }); setView("workspace");
+    setMessage("Source data and analysis settings restored. Prepare a fresh R plan and review it before approving another run.");
+  };
+  const attachRun = (run: ModelRunRecord) => {
+    try {
+      const validated = validateModelRun(run);
+      setModelRuns(current => current.some(item => item.id === validated.id) ? current : [...current, validated]);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not attach the model run."); }
   };
 
   const submitMessage = () => {
@@ -287,9 +372,10 @@ export default function App() {
           <div className="brand-mark"><CircleDot size={18} /></div>
           <span>OPAL</span><small>R OBSERVATORY</small>
         </div>
-        <div className="project-name"><span>PROJECT</span>{dataset?.name ?? "Untitled project"}</div>
+        <div className="project-name"><span>PROJECT</span>{projectName}</div>
+        <button className={`project-save-status ${dirty ? "unsaved" : ""}`} onClick={() => setView("project")} aria-label={dirty ? "Unsaved project changes. Open Project to save." : "No unsaved project changes. Open Project."}>{dirty ? "Unsaved · Save" : "No changes"}</button>
         <nav aria-label="Primary navigation">
-          {(["workspace", "data", "results", "r", "models"] as View[]).map((item) => (
+          {(["workspace", "data", "results", "r", "models", "project"] as View[]).map((item) => (
             <button
               className={view === item ? "active" : ""}
               key={item}
@@ -303,6 +389,7 @@ export default function App() {
         <div className={`runtime ${runtimeState}`}><span /> {runtimeState === "idle" ? "R on demand" : runtimeState}</div>
       </header>
 
+      {recoveryStatus && !recoveryStatus.startsWith("Current project") && !recoveryStatus.startsWith("Recovered") && <div className="recovery-alert" role="alert">{recoveryStatus} <button onClick={() => setView("project")}>Open Project</button></div>}
       <main className="workspace-grid">
         <aside className="rail data-rail">
           <div className="rail-tabs"><button className="active">Variables</button><button>Analyses</button></div>
@@ -344,7 +431,7 @@ export default function App() {
             ref={fileInput}
             type="file"
             accept=".csv,text/csv"
-            onChange={(event) => event.target.files?.[0] && importCsv(event.target.files[0])}
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) importCsv(file); }}
           />
         </aside>
 
@@ -463,7 +550,7 @@ export default function App() {
               {results.length ? results.map((result) => (
                 <article className="result-card" key={result.id}>
                   <div className="result-icon"><BarChart3 /></div>
-                  <div><span className="eyebrow">APPROVED PLAN · {result.datasetName} · dataset {result.datasetRevision}</span><h3>{result.title}</h3><strong>{result.summary}</strong>
+                  <div><span className="eyebrow">RECORDED RESULT · {result.datasetName} · dataset {result.datasetRevision}</span><h3>{result.title}</h3><strong>{result.summary}</strong>
                     <ul>{result.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
                     {result.runtime && <span className="runtime-badge">{result.runtime}</span>}
                     {result.output && <div className="r-output"><span>R OUTPUT</span><pre>{result.output}</pre></div>}
@@ -481,10 +568,11 @@ export default function App() {
                 <div className="terminal-head"><TerminalSquare size={15} /> opal-session <span>{runtimeState === "idle" ? "starts on approval" : runtimeState}</span></div>
                 <pre>{proposal?.rCode ?? "# Choose an analysis to preview its generated R code.\n# Execution output appears in Results."}</pre>
               </div>
-              <div className="notice"><ShieldCheck size={18} /><p><strong>Local runtime boundary</strong>Approved, Opal-generated R runs in a WebAssembly worker inside the browser. Imported rows are not sent to Opal or Aster. Closing the tab discards the session.</p></div>
+              <div className="notice"><ShieldCheck size={18} /><p><strong>Local runtime boundary</strong>Approved, Opal-generated R runs in a WebAssembly worker inside the browser. Imported rows are not sent to Opal or Aster. Save a project file to keep your data and analysis history before closing this tab.</p></div>
             </div>
           )}
-          {view === "models" && <ModelObservatory />}
+          {view === "models" && <ModelObservatory onAttachRun={attachRun} attachedRunIds={modelRuns.map(run => run.id)} />}
+          {view === "project" && <ProjectPanel project={project} recoveryStatus={recoveryStatus} busy={executionBusy} onOpen={openProject} onName={setProjectName} onExport={exported => setSavedContent(projectContent(exported))} onRestore={restoreAnalysis} onRemoveRun={id => setModelRuns(current => current.filter(run => run.id !== id))} />}
         </section>
 
         <aside className="rail agent-rail">

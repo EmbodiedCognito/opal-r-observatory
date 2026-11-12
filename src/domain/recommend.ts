@@ -13,7 +13,7 @@ export function inferVariable(name: string, values: unknown[]): Variable {
   else if (numericRatio > 0.9) kind = "ordinal";
 
   return {
-    id: name.toLowerCase().replace(/\W+/g, "-"),
+    id: name,
     name,
     label: name.replace(/[_-]/g, " "),
     kind,

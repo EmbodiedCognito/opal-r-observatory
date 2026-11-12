@@ -30,6 +30,8 @@ Opal is built around three commitments:
 - Use optional study presets as editable starting points
 - Override inferred measurement types and map variables through direct controls
 - Inspect data, proposals, results, and R code in dedicated workspaces
+- Save and reopen local `.opal` project files containing data, analysis source snapshots, results, and deliberately attached model runs
+- Restore a recorded analysis setup and approve a fresh generated plan to run it again
 - Run a deterministic example project without external services
 - Refresh a bounded snapshot of published model metadata from Hugging Face, across advertised formats
 - Search saved models and saved LM Studio runs without a network connection
@@ -43,7 +45,7 @@ Browser workbench
 ├── Schema inference
 ├── Method catalogue and deterministic recommendation rules
 ├── Aster proposal boundary
-├── Session-only approval and result history
+├── Session-only approval with portable data/result history
 ├── Model discovery and local run interface
 └── Runtime adapter interface
     ├── Browser R / webR (bundled from the pinned npm package)
@@ -98,9 +100,9 @@ npm run check
 Version `0.2.0-dev` is a local analysis foundation. It does not yet provide:
 
 - Aster agent integration or automatic interpretation of statistical results
-- persistent R projects (the model catalogue and local model runs are saved)
+- durable automatic project storage across tab closure (save a `.opal` file explicitly; bounded recovery covers the current tab only)
 - a comprehensive publisher index, general model-weight manager, or runner for non-GGUF and non-language workflows
-- a common portable experiment record linking model runs, R analyses, datasets, and provenance
+- a general experiment engine or typed outputs for arbitrary computation (the portable v1 bundle covers existing R analyses and attached text-model runs only)
 - publication-ready statistical reporting or independent validation
 - plugin installation
 
@@ -125,3 +127,19 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUC
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+## Save and reopen a project
+
+In **Project**, name your work and choose **Save project file**. The `.opal` JSON file contains the current dataset and measurement types, an independent source-data snapshot for each R result, method/mapping, code, output, runtime and completion time. In **Models**, deliberately attach saved runs to include their model identifiers, prompts and responses. Attaching a run does not claim it analysed the dataset. Model weights, catalogue records, API keys and execution approvals are excluded.
+
+Open a file in **Project**, review its contents, save any current work you want to keep, and confirm replacement. Invalid, oversized (20 MB and one million cells across current and source datasets maximum) or unsupported versions leave current work unchanged. Imports are treated as untrusted recorded claims: no code is executed and no model is downloaded. **Restore setup** loads the original dataset and mapping; **Prepare visible R plan** regenerates code from the supported catalogue and requires a fresh approval.
+
+Project files are not encrypted and may contain private rows and conversations. They stay on your device unless you share them. A bounded local recovery copy (2 MB maximum) is kept in session storage for this browser tab. Reload restores the current data, completed results and attached conversations without executing code. Recovery is not a durable backup: save a file before closing the tab or clearing browser data. Storage denial, size limits or quota failures show a warning and preserve the previous recovery copy, which may be older. An unreadable recovery copy is left untouched rather than silently overwritten. A global unsaved indicator opens Project, and Opal requests a standard close/reload warning, but that warning did not appear in the automated Chromium acceptance test. The unsaved marker resets when a file download is prepared or a saved project opens; check that your browser completed the download, since canceling it does not notify Opal. Save/open is blocked while R runs. This is a persistence feature for the existing utility, not an implementation of the separate environment-coupled experimental engine.
+
+## Export an analysis to R
+
+In **Project → Analysis history**, choose **Export R rerun**. Open the downloaded `.R` file in R or RStudio, review it, then run it. It includes the original data snapshot and fresh base-R commands for the saved method and variable choices. No Opal account or extra R package is needed for the five supported methods.
+
+Export does not run imported code, copy attached model conversations, change your project or mark it saved. It regenerates commands using the current catalogue, so it is not an exact historical-code archive and does not validate previously failed or imported results. The file contains raw data rows: keep it private.
+
+Scripts are tested against all five supported methods in actual local webR. Browser download interaction and native RStudio use are not verified for this increment.

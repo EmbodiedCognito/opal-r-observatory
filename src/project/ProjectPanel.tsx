@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { MAX_PROJECT_BYTES, filename, parseProject, serializeProject, type ProjectBundle, type SavedAnalysis } from './bundle';
 import './project.css';
+import { exportRScript } from './rExport';
 
 export default function ProjectPanel({ project, busy, onOpen, onName, onRestore, onRemoveRun, onExport, recoveryStatus }: {
   project: ProjectBundle; recoveryStatus: string; busy: boolean; onOpen: (project: ProjectBundle) => void;
@@ -26,6 +27,16 @@ export default function ProjectPanel({ project, busy, onOpen, onName, onRestore,
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMessage('Project file prepared for download. Check that your browser saved it; canceling the download does not notify Opal. Keep it private: it includes data rows and any attached prompts and responses.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Project could not be saved.'); }
+  };
+  const saveR = (analysis: SavedAnalysis) => {
+    try {
+      const script = exportRScript(project, analysis.id);
+      const url = URL.createObjectURL(new Blob([script.content], { type: 'text/plain;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = script.filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage('R script prepared. Check your browser saved it. It contains the original data and fresh commands for the recorded method, not imported code. Review it before running it in R. Your project has not changed.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'R script could not be exported.'); }
   };
   const read = async (file: File) => {
     const id = ++readId.current;
@@ -64,6 +75,8 @@ export default function ProjectPanel({ project, busy, onOpen, onName, onRestore,
     {project.analyses.map(analysis => <article className="project-record" key={analysis.id}>
       <strong>{analysis.title}</strong><p>{analysis.datasetName} · {analysis.outcome} · {new Date(analysis.completedAt).toLocaleString()}</p>
       <button className="secondary" disabled={busy} onClick={() => { setRestoreCandidate(analysis); setRestoreReady(false); }}>Restore setup for {analysis.title}</button>
+      <button className="secondary" disabled={busy} onClick={() => saveR(analysis)}>Export R rerun for {analysis.title}</button>
+      <p className="project-note">R export includes original data and newly generated commands for running outside Opal. It does not run anything or save current project changes.</p>
       <p className="project-note">Restores the recorded source data and mapping. You review and approve fresh generated code before another run.</p>
     </article>)}
     {restoreCandidate && <section className="project-review" aria-label="Review analysis restore">
